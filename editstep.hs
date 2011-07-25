@@ -4,7 +4,8 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.List as List
 
-main = printLongestLadders
+main = printLongestLadder
+--main = printEditStepGraph
 
 printEditStepGraph = do
         contents <- getContents
@@ -16,8 +17,8 @@ printLongestLadder = do
 
 longestEditStepLadder :: [String] -> Int
 longestEditStepLadder words = 
-        let edges = editStepGraph $ List.sort words
-        in maximum $ map length $ Map.elems $ foldl calcLongestPath Map.empty edges
+        let edges = {-# SCC "buildGraph" #-} editStepGraph $ List.sort words
+        in {-# SCC "calLongestPath" #-} maximum $ map length $ Map.elems $ foldl calcLongestPath Map.empty edges
 
 calcLongestPath :: Map String [String] -> (String, String) -> Map String [String]
 calcLongestPath paths (stepEnd, stepStart) = 
@@ -29,46 +30,65 @@ calcLongestPath paths (stepEnd, stepStart) =
 
 editStepGraph :: [String] -> [(String, String)]
 editStepGraph words =
-        fst $ foldl addEditSteps ([], Set.empty) words
+        reverse $ fst $ foldl addEditSteps ([], Set.empty) words
 
-addEditSteps :: ([(String, String)], Set String) -> String -> ([(String, String)], Set String)
 addEditSteps (graph, dictionary) word = 
-        let nextDictionary = Set.insert word dictionary
-            nextGraph = graph ++ (editSteps dictionary word)
+        let nextDictionary = {-# SCC "nextDictionary" #-} Set.insert word dictionary
+            nextGraph = {-# SCC "nextGraph" #-} (generateEditSteps dictionary word) ++ graph 
         in (nextGraph, nextDictionary)
 
-editSteps :: Set String -> String -> [(String, String)]
-editSteps dictionary word =
-        zip (repeat word) (filter ((flip Set.member) dictionary) (Set.toList $ permutations word))
+generateEditSteps dictionary word =
+        zip (repeat word) $ members dictionary $ permutations word
 
--- TODO: replace zipWith & repeat with fold & currying, for all below
-permutations :: String -> Set String
+members dictionary words = {-# SCC "members" #-} filter (member' dictionary) words
+member' = flip Set.member
+
+permutations :: String -> [String]
 permutations word =
-        Set.union 
-        (Set.fromList $ concat $ zipWith substitutionsAndDeletions [0..(length word)-1] (repeat word))
-        (Set.fromList $ concat $ zipWith additions [0..(length word)] (repeat word))
+        {-# SCC "generatePermutations" #-} prependAllDeletions word $ prependAllAdditions word $ prependAllSubstitutions word []
 
 alphabet = "abcdefghijklmnopqrstuvwxyz"
 
-additions :: Int -> String -> [String]
-additions pos word = 
-        zipWith3 add alphabet (repeat pos) (repeat word)
+prependAllAdditions word permutations = 
+        foldl (prependLetterAdditions word) permutations alphabet
 
-substitutionsAndDeletions :: Int -> String -> [String] 
-substitutionsAndDeletions pos word = 
-        let others = Nothing : (map Just $ filter (/= (word !! pos)) alphabet)
-        in zipWith3 substitute others (repeat pos) (repeat word)
+prependLetterAdditions word permutations letter = 
+        foldl (prependAddition word letter) permutations [0..(length word)]
 
--- TODO: optimize below
-add :: Char -> Int -> String -> String
-add letter pos word =
-        (take pos word) ++ [letter] ++ (drop pos word)
+prependAddition word letter permutations pos = 
+        trimLeadingDuplicate $ (add word letter pos):permutations
 
-substitute :: Maybe Char -> Int -> String -> String
-substitute letter pos word = 
-        let insert = case letter of Nothing -> []
-                                    Just letter -> [letter]
-        in (take pos word) ++ insert ++ (drop (pos+1) word)
+add :: String -> Char -> Int -> String
+add word letter pos =
+        {-# SCC "add" #-} (take pos word) ++ [letter] ++ (drop pos word)
 
+prependAllSubstitutions word permutations = 
+        foldl (prependLetterSubstitutions word) permutations alphabet
 
+prependLetterSubstitutions word permutations letter = 
+        foldl (prependSubstitution word letter) permutations [0..(length word)-1]
 
+prependSubstitution word letter permutations pos
+        | letter == (word !! pos) = permutations
+        | otherwise               = (substitute word letter pos):permutations
+
+substitute :: String -> Char -> Int -> String
+substitute word letter pos =
+        {-# SCC "sub" #-} (take pos word) ++ [letter] ++ (drop (pos+1) word)
+
+prependAllDeletions word permutations =
+        foldl (prependDeletion word) permutations [0..(length word)-1]
+
+prependDeletion word permutations pos = 
+        trimLeadingDuplicate $ (delete word pos):permutations
+
+delete :: String -> Int -> String
+delete word pos = 
+        {-# SCC "del" #-} (take pos word) ++ (drop (pos+1) word)
+
+--trimLeadingDuplicate :: [String] -> [String]
+trimLeadingDuplicate [] = []
+trimLeadingDuplicate (x:[]) = [x]
+trimLeadingDuplicate (x:y:xs) 
+        | x == y    = y:xs
+        | otherwise = x:y:xs
