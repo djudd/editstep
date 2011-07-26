@@ -5,6 +5,7 @@ module Trie
 ) where
 
 import qualified Data.List as List
+import Data.Ord
 
 data Trie = Node Char [Trie] | Leaf deriving (Show)
 eow = '\0'
@@ -24,8 +25,8 @@ isLeaf (Node _ _) = False
 hasLetter letter Leaf = False
 hasLetter letter (Node value _) = value == letter
 
-findChild (Node _ children) letter =
-        {-# SCC "findChild" #-} List.find (hasLetter letter) children
+findChild (Node _ children) letter = {-#SCC "findChild" #-}
+        List.find (hasLetter letter) children
 
 hasLeaf (Node _ children) = 
         List.any isLeaf children
@@ -35,7 +36,9 @@ insert :: Trie -> String -> Trie
 insert node [] =
         if hasLeaf node 
         then node
-        else Node (getLetter node) $ Leaf:(getChildren node)
+        else let letter = getLetter node
+                 children = getChildren node
+             in Node letter (Leaf:children)
 insert node (letter:remaining) = 
         case findChild node letter of
                 Just child -> modifyChild node child remaining
@@ -54,7 +57,6 @@ addSubTrie node letter remaining =
                 [] -> addChild $ Node letter [Leaf]
                 (x:xs) -> addChild $ addSubTrie (Node letter []) x xs
 
--- todo: sort children by leaf count?
 setChildren (Node letter _) children =
         Node letter children
 
