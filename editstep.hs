@@ -1,5 +1,5 @@
-import Data.Set (Set)
-import qualified Data.Set as Set
+--import Data.Set (Set)
+--import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.List as List
@@ -30,18 +30,17 @@ calcLongestPath paths (stepEnd, stepStart) =
 
 editStepGraph :: [String] -> [(String, String)]
 editStepGraph words =
-        reverse $ fst $ foldl addEditSteps ([], Set.empty) words
+        reverse $ fst $ foldl addEditSteps ([], root) words
 
 addEditSteps (graph, dictionary) word = 
-        let nextDictionary = {-# SCC "nextDictionary" #-} Set.insert word dictionary
+        let nextDictionary = {-# SCC "nextDictionary" #-} insert dictionary word
             nextGraph = {-# SCC "nextGraph" #-} (generateEditSteps dictionary word) ++ graph 
         in (nextGraph, nextDictionary)
 
 generateEditSteps dictionary word =
         zip (repeat word) $ members dictionary $ permutations word
 
-members dictionary words = {-# SCC "members" #-} filter (member' dictionary) words
-member' = flip Set.member
+members dictionary words = {-# SCC "members" #-} filter (contains dictionary) words
 
 permutations :: String -> [String]
 permutations word =
@@ -92,3 +91,74 @@ trimLeadingDuplicate (x:[]) = [x]
 trimLeadingDuplicate (x:y:xs) 
         | x == y    = y:xs
         | otherwise = x:y:xs
+
+-- trie types & constants
+data Trie = Node Char [Trie] | Leaf deriving (Show)
+
+eow = '\0'
+root = Node eow []
+
+-- trie utility functions
+getLetter (Node letter _) = letter
+getLetter Leaf = eow
+
+getChildren (Node _ children) = children
+getChildren Leaf = []
+
+isLeaf Leaf = True
+isLeaf (Node _ _) = False
+
+hasLetter letter Leaf = False
+hasLetter letter (Node value _) = value == letter
+
+findChild (Node _ children) letter =
+        List.find (hasLetter letter) children
+
+hasLeaf (Node _ children) = 
+        List.any isLeaf children
+
+-- trie insertion
+insert :: Trie -> String -> Trie
+insert node [] =
+        if hasLeaf node 
+        then node
+        else Node (getLetter node) $ Leaf:(getChildren node)
+insert node (letter:remaining) = 
+        case findChild node letter of
+                Just child -> modifyChild node child remaining
+                Nothing -> addChildren node letter remaining
+
+modifyChild :: Trie -> Trie -> String -> Trie
+modifyChild parent child remaining =
+        let isOther = \candidate -> (getLetter candidate) /= (getLetter child)
+            otherChildren = filter isOther (getChildren parent)
+            modifiedChild = insert child remaining
+        in setChildren parent (modifiedChild:otherChildren)
+
+addChildren :: Trie -> Char -> String -> Trie
+addChildren node letter remaining = 
+        let children = getChildren node
+        in case remaining of
+                [] -> setChildren node $ (Node letter [Leaf]):children
+                (x:xs) -> setChildren node $ (addChildren (Node letter []) x xs):children
+
+setChildren (Node letter _) children =
+        Node letter children
+
+-- trie lookup
+contains :: Trie -> String -> Bool
+contains node [] = hasLeaf node
+contains node (letter:remaining) =
+        case findChild node letter of
+                Just child -> contains child remaining
+                Nothing -> False
+
+-- performance test code
+fiveLetterWords = [a:b:c:d:e:[] | a <- alphabet, b <- alphabet, c <- alphabet, d <- alphabet, e <- alphabet]
+println str = putStr $ (show str) ++ "\n"
+
+-- for comparison: egrep -c '^[[:alpha:]]{5}$' dev-challenges/001-edit-step-ladder/input/big
+lookupAllFiveLetterWordsInDictionary = do
+        contents <- getContents
+        println $ length fiveLetterWords
+        println $ length $ filter (contains (foldl insert root (lines contents))) fiveLetterWords
