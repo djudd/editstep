@@ -1,93 +1,24 @@
-import Data.Map (Map)
-import qualified Data.Map as Map
-import qualified Data.List as List
-
+import EditStepGraph
 import qualified Trie as Trie
 
 main = printLongestLadder
---main = printEditStepGraph
-
-printEditStepGraph = do
-        contents <- getContents
-        putStr $ show $ editStepGraph $ List.sort $ lines contents
 
 printLongestLadder = do
         contents <- getContents
-        putStr $ (show $ longestEditStepLadder $ lines contents) ++ "\n"
+        println $ longestEditStepLadder $ lines contents
 
-longestEditStepLadder :: [String] -> Int
-longestEditStepLadder words = 
-        let edges = {-# SCC "buildGraph" #-} editStepGraph $ List.sort words
-        in {-# SCC "calcLongestPath" #-} maximum $ map length $ Map.elems $ foldl calcLongestPath Map.empty edges
+printEditStepGraph = do
+        contents <- getContents
+        println $ editStepGraph $ lines contents
 
-calcLongestPath :: Map String [String] -> (String, String) -> Map String [String]
-calcLongestPath paths (stepEnd, stepStart) = 
-        let startPath = maybe [stepStart] id (Map.lookup stepStart paths)
-            endPath = maybe [stepEnd] id (Map.lookup stepEnd paths)
-        in (if (length startPath) < (length endPath)
-            then paths 
-            else Map.insert stepEnd (stepEnd : startPath) paths)
+-- to get expected result: egrep -c '^[[:alpha:]]{5}$' wordlists/big
+fiveLetterWords = [a:b:c:d:e:[] | a <- alphabet, b <- alphabet, c <- alphabet, d <- alphabet, e <- alphabet]
+allFiveLetterWordsInDictionary dictionary = filter (Trie.contains (foldl Trie.insert Trie.empty dictionary)) fiveLetterWords
+printNumberOfFiveLetterWords = do
+        contents <- getContents
+        println $ length fiveLetterWords
+        println $ length $ allFiveLetterWordsInDictionary $ lines contents
 
-editStepGraph :: [String] -> [(String, String)]
-editStepGraph words =
-        reverse $ fst $ foldl addEditSteps ([], Trie.empty) words
+println x = putStr $ (show x) ++ "\n"
 
-addEditSteps (graph, dictionary) word = 
-        let nextDictionary = {-# SCC "nextDictionary" #-} Trie.insert dictionary word
-            nextGraph = {-# SCC "nextGraph" #-} (generateEditSteps dictionary word) ++ graph 
-        in (nextGraph, nextDictionary)
 
-generateEditSteps dictionary word =
-        zip (repeat word) $ members dictionary $ permutations word
-
-members dictionary words = {-# SCC "members" #-} filter (Trie.contains dictionary) words
-
-permutations :: String -> [String]
-permutations word =
-        {-# SCC "generatePermutations" #-} prependAllDeletions word $ prependAllAdditions word $ prependAllSubstitutions word []
-
-alphabet = "abcdefghijklmnopqrstuvwxyz"
-
-prependAllAdditions word permutations = 
-        foldl (prependLetterAdditions word) permutations alphabet
-
-prependLetterAdditions word permutations letter = 
-        foldl (prependAddition word letter) permutations [0..(length word)]
-
-prependAddition word letter permutations pos = 
-        trimLeadingDuplicate $ (add word letter pos):permutations
-
-add :: String -> Char -> Int -> String
-add word letter pos =
-        {-# SCC "add" #-} (take pos word) ++ [letter] ++ (drop pos word)
-
-prependAllSubstitutions word permutations = 
-        foldl (prependLetterSubstitutions word) permutations alphabet
-
-prependLetterSubstitutions word permutations letter = 
-        foldl (prependSubstitution word letter) permutations [0..(length word)-1]
-
-prependSubstitution word letter permutations pos
-        | letter == (word !! pos) = permutations
-        | otherwise               = (substitute word letter pos):permutations
-
-substitute :: String -> Char -> Int -> String
-substitute word letter pos =
-        {-# SCC "sub" #-} (take pos word) ++ [letter] ++ (drop (pos+1) word)
-
-prependAllDeletions word permutations =
-        foldl (prependDeletion word) permutations [0..(length word)-1]
-
-prependDeletion word permutations pos = 
-        trimLeadingDuplicate $ (delete word pos):permutations
-
-delete :: String -> Int -> String
-delete word pos = 
-        {-# SCC "del" #-} (take pos word) ++ (drop (pos+1) word)
-
---trimLeadingDuplicate :: [String] -> [String]
-trimLeadingDuplicate [] = []
-trimLeadingDuplicate (x:[]) = [x]
-trimLeadingDuplicate (x:y:xs) 
-        | x == y    = y:xs
-        | otherwise = x:y:xs

@@ -8,9 +8,9 @@ import qualified Data.List as List
 import Data.Ord
 
 data Trie = Node Char [Trie] | Leaf deriving (Show)
-eow = '\0'
 
 -- utility functions
+eow = '\0'
 empty = Node eow []
 
 getLetter (Node letter _) = letter
@@ -67,14 +67,3 @@ contains node (letter:remaining) =
         case findChild node letter of
                 Just child -> contains child remaining
                 Nothing -> False
-
--- performance test code
--- to get expected result: egrep -c '^[[:alpha:]]{5}$' wordlists/big
-alphabet = "abcdefghijklmnopqrstuvwxyz"
-fiveLetterWords = [a:b:c:d:e:[] | a <- alphabet, b <- alphabet, c <- alphabet, d <- alphabet, e <- alphabet]
-println str = putStr $ (show str) ++ "\n"
-
-lookupAllFiveLetterWordsInDictionary = do
-        contents <- getContents
-        println $ length fiveLetterWords
-        println $ length $ filter (contains (foldl insert empty (lines contents))) fiveLetterWords
