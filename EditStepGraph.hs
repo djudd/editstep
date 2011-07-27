@@ -16,17 +16,17 @@ longestEditStepLadder words =
                 editStepGraph $ List.sort words
             longestPathsToNodes = {-# SCC "longestPathsToNodes" #-} 
                 Map.elems $ foldl longestPathToEdgeEnd Map.empty edges
-        in maximum $ map length longestPathsToNodes
+        in maximum $ longestPathsToNodes
 
-longestPathToEdgeEnd paths (stepEnd, stepStart) = 
+longestPathToEdgeEnd paths (stepEnd, stepStart) =
         let startPath = pathToNode paths stepStart
             endPath = pathToNode paths stepEnd
-        in (if (length startPath) < (length endPath)
-            then paths 
-            else Map.insert stepEnd (stepEnd : startPath) paths)
+        in {-# SCC "longestPath" #-} if startPath < endPath
+            then paths
+            else Map.insert stepEnd (startPath+1) paths
 
-pathToNode paths node =
-        maybe [node] id $ Map.lookup node paths
+pathToNode paths node = {-# SCC "pathToNode" #-}
+        maybe 1 id $ Map.lookup node paths
 
 -- build edit step graph
 editStepGraph :: [String] -> [(String, String)]

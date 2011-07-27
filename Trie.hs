@@ -87,16 +87,16 @@ subtries node word = scanl subtrie node word
 subtrie node letter = fromJust $ findChild node letter
 
 substitutions result prefix [] node = result
-substitutions result prefix (letter:suffix) node =
+substitutions result prefix (letter:suffix) node = {-#SCC "substitutions" #-}
         let otherChildren = filter (not . (hasLetter letter)) $ getChildren node
             substitutes = lettersForNodesContaining suffix otherChildren
         in [prefix ++ [substitute] ++ suffix | substitute <- substitutes] ++ result
 
-additions result prefix rest node =
+additions result prefix rest node = {-#SCC "additions" #-}
         let addends = lettersForNodesContaining rest $ getChildren node
         in [prefix ++ [addend] ++ rest | addend <- addends] ++ result
 
-lettersForNodesContaining word nodes =
+lettersForNodesContaining word nodes = {-#SCC "deletions" #-}
         map getLetter $ filter (contains word) nodes
 
 deletions result prefix [] node = result
