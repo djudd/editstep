@@ -1,9 +1,5 @@
 module Trie 
-( empty,
-  insert,
-  contains,
-  permutations,
-  longestEditStepLadder
+( longestEditStepLadder
 ) where
 
 import qualified Data.List as List
@@ -12,7 +8,7 @@ import Data.Maybe
 
 data Trie = Node Char [Trie] | Leaf Int deriving (Show)
 
--- utility functions
+-- utility functions operating on single nodes
 eow = '\0'
 empty = Node eow []
 
@@ -36,12 +32,15 @@ hasLeaf (Leaf _) = False
 hasLeaf (Node _ children) = 
         List.any isLeaf children
 
--- insertion
+setChildren (Node letter _) children =
+        Node letter children
+
+-- basic trie operations
 insert :: Int -> String -> Trie -> Trie
-insert val [] (Node letter children) =
+insert val [] (Node letter children) = {-# SCC "insert" #-}
         let fertileChildren = filter (not . isLeaf) children
         in Node letter (Leaf val:fertileChildren)
-insert val (letter:remaining) node = 
+insert val (letter:remaining) node = {-# SCC "insert" #-}
         case findChild node letter of
                 Just child -> modifyChild node child remaining val
                 Nothing -> addSubTrie node letter remaining val
@@ -59,66 +58,57 @@ addSubTrie node letter remaining val =
                 [] -> addChild $ Node letter [Leaf val]
                 (x:xs) -> addChild $ addSubTrie (Node letter []) x xs val
 
-setChildren (Node letter _) children =
-        Node letter children
-
--- lookup
-contains :: String -> Trie -> Bool
-contains word trie = (Trie.lookup word trie) > 0
-
 lookup :: String -> Trie -> Int
-lookup [] (Leaf _) = 0
-lookup [] (Node _ children) =
+lookup [] (Leaf _) = {-# SCC "lookup" #-} 0
+lookup [] (Node _ children) = {-# SCC "lookup" #-}
         case List.find isLeaf children of
                 Just (Leaf val) -> val
                 Nothing -> 0
-lookup (letter:remaining) node =
+lookup (letter:remaining) node = {-# SCC "lookup" #-}
         case findChild node letter of
                 Just child -> Trie.lookup remaining child
                 Nothing -> 0
 
-permutations :: String -> Trie -> [String]
-permutations word node =
-        let params = zip (splits word) (subtries node word)
-        in generate additions params $ generate substitutions params $ generate deletions params []
-
+-- edit step specific
 longestEditStepLadder :: [String] -> Int
 longestEditStepLadder words = 
-        let trie = foldl insertUpdatingLongestPath Trie.empty words
-        in maximum $ map ((flip Trie.lookup) trie) words
+        let (longestLadder, _) = foldl insertTrackingLongestPath (0, Trie.empty) words
+        in longestLadder
 
-insertUpdatingLongestPath :: Trie -> String -> Trie
-insertUpdatingLongestPath trie word =
-        let trie' = insert 1 word trie
-            perms = permutations word trie'
-            subpathLengths = map ((flip Trie.lookup) trie') perms
-            longestSubpath = if null subpathLengths then 0 else maximum subpathLengths 
-        in insert (longestSubpath+1) word trie
+insertTrackingLongestPath :: (Int, Trie) -> String -> (Int, Trie)
+insertTrackingLongestPath (longestPath, trie) word =
+        let longestPathToWord = {-# SCC "longestPathToWord" #-} longestPathTo word trie
+            trie' = {-# SCC "nextTrie" #-} insert longestPathToWord word trie
+            longestPath' = max longestPath longestPathToWord
+        in (longestPath', trie')            
 
-generate generator params results = 
-        let generator' = \result ((prefix, suffix), node) -> generator result prefix suffix node
-        in foldl generator' results params
+longestPathTo word trie =
+        (+1) $ maximum $ map longestPathToPermutationAt $ zip (suffixes word) (suffixSubtries trie word)
 
-splits word = [(take n word, drop n word) | n <- [0..(length word)]]
+suffixes word = [drop n word | n <- [0..(length word)]]
 
-subtries node word = scanl subtrie node word
-subtrie node letter = fromJust $ findChild node letter
+suffixSubtries node word = scanl subtrie node word
 
-substitutions result prefix [] node = result
-substitutions result prefix (letter:suffix) node = {-#SCC "substitutions" #-}
+subtrie node letter = case findChild node letter of
+        Just child -> child
+        Nothing -> Node letter []        
+
+longestPathToPermutationAt (suffix, node) = 
+        maximum $ (longestPathToSubstitutionAt suffix node):(longestPathToAdditionBefore suffix node):(longestPathToDeletionAt suffix node):[]
+
+longestPathToSubstitutionAt [] node = 0
+longestPathToSubstitutionAt (letter:suffix) node =
         let otherChildren = filter (not . (hasLetter letter)) $ getChildren node
-            substitutes = lettersForNodesContaining suffix otherChildren
-        in [prefix ++ [substitute] ++ suffix | substitute <- substitutes] ++ result
+        in longestPathContaining suffix otherChildren
 
-additions result prefix rest node = {-#SCC "additions" #-}
-        let addends = lettersForNodesContaining rest $ getChildren node
-        in [prefix ++ [addend] ++ rest | addend <- addends] ++ result
+longestPathToAdditionBefore suffix node =
+        longestPathContaining suffix $ getChildren node
 
-lettersForNodesContaining word nodes = {-#SCC "deletions" #-}
-        map getLetter $ filter (contains word) nodes
+longestPathToDeletionAt [] node = 0
+longestPathToDeletionAt (_:suffix) node =
+        Trie.lookup suffix node
 
-deletions result prefix [] node = result
-deletions result prefix (_:suffix) node =
-        if contains suffix node
-        then (prefix ++ suffix):result 
-        else result
+longestPathContaining suffix nodes =
+        if null nodes
+        then 0
+        else maximum $ map (Trie.lookup suffix) nodes
