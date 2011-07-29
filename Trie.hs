@@ -6,65 +6,51 @@ import qualified Data.List as List
 import Data.Ord
 import Data.Maybe
 
-data Trie = Node Char [Trie] | Leaf Int deriving (Show)
+data Trie = Node Char [Trie] Int deriving (Show)
 
 -- utility functions operating on single nodes
 eow = '\0'
-empty = Node eow []
+empty = Node eow [] 0
 
-getLetter (Node letter _) = letter
-getLetter (Leaf _) = eow
+getLetter (Node letter _ _) = letter
 
-getChildren (Node _ children) = children
-getChildren (Leaf _) = []
+getChildren (Node _ children _) = children
 
-isLeaf (Leaf _) = True
-isLeaf (Node _ _) = False
+hasLetter l (Node letter _ _) = l == letter
 
-hasLetter letter (Leaf _) = False
-hasLetter letter (Node value _) = value == letter
-
-findChild (Leaf _) letter = Nothing
-findChild (Node _ children) letter = {-#SCC "findChild" #-}
+findChild (Node _ children _) letter =
         List.find (hasLetter letter) children
 
-hasLeaf (Leaf _) = False
-hasLeaf (Node _ children) = 
-        List.any isLeaf children
+otherChildren (Node _ children _) letter =
+        filter (not . (hasLetter letter)) children
 
-setChildren (Node letter _) children =
-        Node letter children
+setChildren (Node letter _ val) children =
+        Node letter children val
 
 -- basic trie operations
 insert :: Int -> String -> Trie -> Trie
-insert val [] (Node letter children) = {-# SCC "insert" #-}
-        let fertileChildren = filter (not . isLeaf) children
-        in Node letter (Leaf val:fertileChildren)
-insert val (letter:remaining) node = {-# SCC "insert" #-}
+insert val [] (Node letter children _) =
+        Node letter children val
+insert val (letter:remaining) node = 
         case findChild node letter of
                 Just child -> modifyChild node child remaining val
-                Nothing -> addSubTrie node letter remaining val
+                Nothing -> addSubtrie node letter remaining val
 
-modifyChild parent child remaining val =
-        let isOther = \candidate -> (getLetter candidate) /= (getLetter child)
-            otherChildren = filter isOther (getChildren parent)
-            modifiedChild = insert val remaining child
-        in setChildren parent (modifiedChild:otherChildren)
+modifyChild node child remaining val =
+        let modifiedChild = insert val remaining child
+            others = otherChildren node $ getLetter child
+        in setChildren node $ modifiedChild:others
 
-addSubTrie node letter remaining val = 
+addSubtrie node letter remaining val = 
         let children = getChildren node
             addChild = \child -> setChildren node $ child:children
         in case remaining of
-                [] -> addChild $ Node letter [Leaf val]
-                (x:xs) -> addChild $ addSubTrie (Node letter []) x xs val
+                [] -> addChild $ Node letter [] val
+                (x:xs) -> addChild $ addSubtrie (Node letter [] 0) x xs val
 
 lookup :: String -> Trie -> Int
-lookup [] (Leaf _) = {-# SCC "lookup" #-} 0
-lookup [] (Node _ children) = {-# SCC "lookup" #-}
-        case List.find isLeaf children of
-                Just (Leaf val) -> val
-                Nothing -> 0
-lookup (letter:remaining) node = {-# SCC "lookup" #-}
+lookup [] (Node _ _ val) = val
+lookup (letter:remaining) node =
         case findChild node letter of
                 Just child -> Trie.lookup remaining child
                 Nothing -> 0
@@ -77,8 +63,8 @@ longestEditStepLadder words =
 
 insertTrackingLongestPath :: (Int, Trie) -> String -> (Int, Trie)
 insertTrackingLongestPath (longestPath, trie) word =
-        let longestPathToWord = {-# SCC "longestPathToWord" #-} longestPathTo word trie
-            trie' = {-# SCC "nextTrie" #-} insert longestPathToWord word trie
+        let longestPathToWord = longestPathTo word trie
+            trie' = insert longestPathToWord word trie
             longestPath' = max longestPath longestPathToWord
         in (longestPath', trie')            
 
@@ -91,15 +77,14 @@ suffixSubtries node word = scanl subtrie node word
 
 subtrie node letter = case findChild node letter of
         Just child -> child
-        Nothing -> Node letter []        
+        Nothing -> Node letter [] 0
 
 longestPathToPermutationAt (suffix, node) = 
         maximum $ (longestPathToSubstitutionAt suffix node):(longestPathToAdditionBefore suffix node):(longestPathToDeletionAt suffix node):[]
 
 longestPathToSubstitutionAt [] node = 0
 longestPathToSubstitutionAt (letter:suffix) node =
-        let otherChildren = filter (not . (hasLetter letter)) $ getChildren node
-        in longestPathContaining suffix otherChildren
+        longestPathContaining suffix $ otherChildren node letter
 
 longestPathToAdditionBefore suffix node =
         longestPathContaining suffix $ getChildren node
