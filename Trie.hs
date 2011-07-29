@@ -2,80 +2,98 @@ module Trie
 ( empty,
   insert,
   contains,
-  permutations
+  permutations,
+  longestEditStepLadder
 ) where
 
 import qualified Data.List as List
 import Data.Ord
 import Data.Maybe
 
-data Trie = Node Char [Trie] | Leaf deriving (Show)
+data Trie = Node Char [Trie] | Leaf Int deriving (Show)
 
 -- utility functions
 eow = '\0'
 empty = Node eow []
 
 getLetter (Node letter _) = letter
-getLetter Leaf = eow
+getLetter (Leaf _) = eow
 
 getChildren (Node _ children) = children
-getChildren Leaf = []
+getChildren (Leaf _) = []
 
-isLeaf Leaf = True
+isLeaf (Leaf _) = True
 isLeaf (Node _ _) = False
 
-hasLetter letter Leaf = False
+hasLetter letter (Leaf _) = False
 hasLetter letter (Node value _) = value == letter
 
-findChild Leaf letter = Nothing
+findChild (Leaf _) letter = Nothing
 findChild (Node _ children) letter = {-#SCC "findChild" #-}
         List.find (hasLetter letter) children
 
-hasLeaf Leaf = False
+hasLeaf (Leaf _) = False
 hasLeaf (Node _ children) = 
         List.any isLeaf children
 
 -- insertion
-insert :: Trie -> String -> Trie
-insert node [] =
-        if hasLeaf node 
-        then node
-        else let letter = getLetter node
-                 children = getChildren node
-             in Node letter (Leaf:children)
-insert node (letter:remaining) = 
+insert :: Int -> String -> Trie -> Trie
+insert val [] (Node letter children) =
+        let fertileChildren = filter (not . isLeaf) children
+        in Node letter (Leaf val:fertileChildren)
+insert val (letter:remaining) node = 
         case findChild node letter of
-                Just child -> modifyChild node child remaining
-                Nothing -> addSubTrie node letter remaining
+                Just child -> modifyChild node child remaining val
+                Nothing -> addSubTrie node letter remaining val
 
-modifyChild parent child remaining =
+modifyChild parent child remaining val =
         let isOther = \candidate -> (getLetter candidate) /= (getLetter child)
             otherChildren = filter isOther (getChildren parent)
-            modifiedChild = insert child remaining
+            modifiedChild = insert val remaining child
         in setChildren parent (modifiedChild:otherChildren)
 
-addSubTrie node letter remaining = 
+addSubTrie node letter remaining val = 
         let children = getChildren node
             addChild = \child -> setChildren node $ child:children
         in case remaining of
-                [] -> addChild $ Node letter [Leaf]
-                (x:xs) -> addChild $ addSubTrie (Node letter []) x xs
+                [] -> addChild $ Node letter [Leaf val]
+                (x:xs) -> addChild $ addSubTrie (Node letter []) x xs val
 
 setChildren (Node letter _) children =
         Node letter children
 
 -- lookup
 contains :: String -> Trie -> Bool
-contains [] node = hasLeaf node
-contains (letter:remaining) node =
+contains word trie = (Trie.lookup word trie) > 0
+
+lookup :: String -> Trie -> Int
+lookup [] (Leaf _) = 0
+lookup [] (Node _ children) =
+        case List.find isLeaf children of
+                Just (Leaf val) -> val
+                Nothing -> 0
+lookup (letter:remaining) node =
         case findChild node letter of
-                Just child -> contains remaining child
-                Nothing -> False
+                Just child -> Trie.lookup remaining child
+                Nothing -> 0
 
 permutations :: String -> Trie -> [String]
 permutations word node =
         let params = zip (splits word) (subtries node word)
         in generate additions params $ generate substitutions params $ generate deletions params []
+
+longestEditStepLadder :: [String] -> Int
+longestEditStepLadder words = 
+        let trie = foldl insertUpdatingLongestPath Trie.empty words
+        in maximum $ map ((flip Trie.lookup) trie) words
+
+insertUpdatingLongestPath :: Trie -> String -> Trie
+insertUpdatingLongestPath trie word =
+        let trie' = insert 1 word trie
+            perms = permutations word trie'
+            subpathLengths = map ((flip Trie.lookup) trie') perms
+            longestSubpath = if null subpathLengths then 0 else maximum subpathLengths 
+        in insert (longestSubpath+1) word trie
 
 generate generator params results = 
         let generator' = \result ((prefix, suffix), node) -> generator result prefix suffix node
