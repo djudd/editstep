@@ -1,4 +1,4 @@
-import Trie
+import EditStep
 
 main = printLongestLadder
 
